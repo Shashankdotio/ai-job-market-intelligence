@@ -1,0 +1,57 @@
+"""Project configuration and filesystem locations."""
+
+from pathlib import Path
+from typing import Final
+
+
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+DATA_DIR: Final[Path] = PROJECT_ROOT / "data"
+RAW_DATA_DIR: Final[Path] = DATA_DIR / "raw"
+BRONZE_DATA_DIR: Final[Path] = DATA_DIR / "bronze"
+BRONZE_SNAPSHOTS_DIR: Final[Path] = BRONZE_DATA_DIR / "job_snapshots"
+SILVER_DATA_DIR: Final[Path] = DATA_DIR / "silver"
+GOLD_DATA_DIR: Final[Path] = DATA_DIR / "gold"
+QUALITY_DATA_DIR: Final[Path] = DATA_DIR / "quality"
+PROCESSED_DATA_DIR: Final[Path] = DATA_DIR / "processed"
+OUTPUTS_DIR: Final[Path] = PROJECT_ROOT / "outputs"
+CHARTS_DIR: Final[Path] = OUTPUTS_DIR / "charts"
+REPORTS_DIR: Final[Path] = OUTPUTS_DIR / "reports"
+JOBS_MASTER_PATH: Final[Path] = RAW_DATA_DIR / "jobs_master.csv"
+SILVER_JOB_POSTINGS_PATH: Final[Path] = SILVER_DATA_DIR / "job_postings.csv"
+GOLD_COMPANY_COUNTS_PATH: Final[Path] = GOLD_DATA_DIR / "company_counts.csv"
+GOLD_SKILL_COUNTS_PATH: Final[Path] = GOLD_DATA_DIR / "skill_counts.csv"
+GOLD_COMPANY_SKILL_COUNTS_PATH: Final[Path] = (
+    GOLD_DATA_DIR / "company_skill_counts.csv"
+)
+GOLD_JOB_POSTINGS_PATH: Final[Path] = GOLD_DATA_DIR / "job_postings.csv"
+GOLD_METADATA_PATH: Final[Path] = GOLD_DATA_DIR / "metadata.json"
+QUALITY_REPORT_PATH: Final[Path] = QUALITY_DATA_DIR / "latest_report.json"
+
+# Board tokens are provider configuration, not pipeline logic. A new provider
+# can add its own configured organizations without changing downstream ETL.
+GREENHOUSE_COMPANIES: Final[tuple[str, ...]] = (
+    "anthropic",
+    "figma",
+    "plaid",
+    "vercel",
+    "datadog",
+    "ramp",
+    "scaleai",
+)
+
+def ensure_project_directories() -> None:
+    """Create directories owned by the local data pipeline when needed."""
+    for directory in (
+        DATA_DIR,
+        RAW_DATA_DIR,
+        BRONZE_DATA_DIR,
+        BRONZE_SNAPSHOTS_DIR,
+        SILVER_DATA_DIR,
+        GOLD_DATA_DIR,
+        QUALITY_DATA_DIR,
+        PROCESSED_DATA_DIR,
+        OUTPUTS_DIR,
+        CHARTS_DIR,
+        REPORTS_DIR,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)

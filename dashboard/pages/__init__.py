@@ -1,0 +1,1 @@
+"""Independently renderable dashboard pages."""

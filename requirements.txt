@@ -27,6 +27,7 @@ pandas==3.0.3
 parso==0.8.7
 pexpect==4.9.0
 pillow==12.3.0
+plotly>=5.24,<7.0
 platformdirs==4.10.0
 prompt_toolkit==3.0.52
 psutil==7.2.2
@@ -39,6 +40,7 @@ pyzmq==27.1.0
 requests==2.34.2
 six==1.17.0
 soupsieve==2.8.4
+streamlit>=1.40,<2.0
 stack-data==0.6.3
 tornado==6.5.7
 traitlets==5.15.1

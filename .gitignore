@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Derived bronze/silver/gold data layers and validation reports
+data/bronze/
+data/silver/
+data/gold/
+data/quality/

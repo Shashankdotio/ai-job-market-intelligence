@@ -1,120 +1,48 @@
-import requests
-import pandas as pd
+"""Backward-compatible Greenhouse scraper entry point.
+
+Use ``python -m ai_job_market ingest --provider greenhouse`` for new runs.
+Executing this file directly still runs the same Greenhouse ingestion pipeline.
+"""
+
 import sys
-import os
-from bs4 import BeautifulSoup
-import html
-
-sys.path.append(os.path.dirname(__file__))
-
-from companies import GREENHOUSE_COMPANIES
+from datetime import datetime, timezone
+from pathlib import Path
 
 
-from bs4 import BeautifulSoup
-import html
+# Direct execution sets sys.path to ``scrapers/``. Add the project root only
+# for this legacy script so its original invocation remains supported.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from ai_job_market.config import GREENHOUSE_COMPANIES
+from ai_job_market.logging import configure_logging
+from ai_job_market.pipeline.ingestion import run_ingestion
+from ai_job_market.providers.greenhouse import GreenhouseProvider, clean_html
 
 
-def clean_html(text):
-    if not text:
-        return ""
+def fetch_jobs(company: str) -> list[dict[str, str]]:
+    """Return legacy-shaped Greenhouse jobs for one company board.
 
-    # Convert &lt;div&gt; → <div>
-    decoded = html.unescape(text)
-
-    # Remove HTML tags
-    soup = BeautifulSoup(decoded, "html.parser")
-
-    return soup.get_text(separator=" ", strip=True)
-
-
-def fetch_jobs(company):
-
-    url = f"https://boards-api.greenhouse.io/v1/boards/{company}/jobs"
-
-    response = requests.get(url)
-
-    if response.status_code != 200:
-        print(f"Failed: {company}")
-        return []
-
-    data = response.json()
-
-    jobs = []
-
-    total_jobs = len(data["jobs"])
-
-    for i, job in enumerate(data["jobs"], start=1):
-
-        print(
-            f"{company}: {i}/{total_jobs}",
-            end="\r"
-        )
-
-        job_id = job["id"]
-
-        detail_url = (
-            f"https://boards-api.greenhouse.io/v1/boards/"
-            f"{company}/jobs/{job_id}"
-        )
-
-        detail_response = requests.get(detail_url)
-
-        if detail_response.status_code != 200:
-            continue
-
-        detail = detail_response.json()
-
-        description = clean_html(
-            detail.get("content", "")
-        )
-
-        departments = ", ".join(
-            dept.get("name", "")
-            for dept in detail.get("departments", [])
-        )
-
-        offices = ", ".join(
-            office.get("name", "")
-            for office in detail.get("offices", [])
-        )
-
-        jobs.append({
-            "company": company,
-            "title": job.get("title"),
-            "location": job.get("location", {}).get("name"),
-            "updated_at": job.get("updated_at"),
-            "job_url": job.get("absolute_url"),
-            "department": departments,
-            "office": offices,
-            "description": description
-        })
-
-    print(f"\nCompleted {company}")
-
-    return jobs
+    This helper preserves the original public function while delegating all
+    collection and normalization behavior to the registered provider module.
+    """
+    result = GreenhouseProvider().scrape(
+        companies=[company],
+        collected_at=datetime.now(timezone.utc).isoformat(),
+    )
+    return [job.to_legacy_row() for job in result.jobs]
 
 
-all_jobs = []
+def main() -> int:
+    """Run the Greenhouse-only ingestion command for legacy callers."""
+    configure_logging()
+    run_ingestion(
+        provider_names=[GreenhouseProvider.name],
+        companies_by_provider={GreenhouseProvider.name: GREENHOUSE_COMPANIES},
+    )
+    return 0
 
-for company in GREENHOUSE_COMPANIES:
 
-    print(f"\nFetching {company}")
-
-    jobs = fetch_jobs(company)
-
-    print(f"Found {len(jobs)} jobs")
-
-    all_jobs.extend(jobs)
-
-df = pd.DataFrame(all_jobs)
-
-print(f"\nTotal Jobs Collected: {len(df)}")
-
-os.makedirs("data", exist_ok=True)
-
-df.to_csv(
-    "data/jobs_master.csv",
-    index=False
-)
-
-print("\nSaved to data/jobs_master.csv")
+if __name__ == "__main__":
+    raise SystemExit(main())
