@@ -16,6 +16,15 @@ PROCESSED_DATA_DIR: Final[Path] = DATA_DIR / "processed"
 OUTPUTS_DIR: Final[Path] = PROJECT_ROOT / "outputs"
 CHARTS_DIR: Final[Path] = OUTPUTS_DIR / "charts"
 REPORTS_DIR: Final[Path] = OUTPUTS_DIR / "reports"
+INGESTION_DATA_DIR: Final[Path] = DATA_DIR / "ingestion"
+INGESTION_RUNS_DIR: Final[Path] = INGESTION_DATA_DIR / "runs"
+INGESTION_COMPANY_RESULTS_DIR: Final[Path] = (
+    INGESTION_DATA_DIR / "company_results"
+)
+INGESTION_JOB_OBSERVATIONS_DIR: Final[Path] = (
+    INGESTION_DATA_DIR / "job_observations"
+)
+INGESTION_JOB_EVENTS_DIR: Final[Path] = INGESTION_DATA_DIR / "job_events"
 JOBS_MASTER_PATH: Final[Path] = RAW_DATA_DIR / "jobs_master.csv"
 SILVER_JOB_POSTINGS_PATH: Final[Path] = SILVER_DATA_DIR / "job_postings.csv"
 GOLD_COMPANY_COUNTS_PATH: Final[Path] = GOLD_DATA_DIR / "company_counts.csv"
@@ -50,6 +59,11 @@ def ensure_project_directories() -> None:
         GOLD_DATA_DIR,
         QUALITY_DATA_DIR,
         PROCESSED_DATA_DIR,
+        INGESTION_DATA_DIR,
+        INGESTION_RUNS_DIR,
+        INGESTION_COMPANY_RESULTS_DIR,
+        INGESTION_JOB_OBSERVATIONS_DIR,
+        INGESTION_JOB_EVENTS_DIR,
         OUTPUTS_DIR,
         CHARTS_DIR,
         REPORTS_DIR,

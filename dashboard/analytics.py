@@ -125,8 +125,6 @@ def classify_seniority(title: object) -> str:
         return "Director"
     if any(term in value for term in ("principal", "staff", "senior", " sr.")):
         return "Senior"
-    if "manager" in value:
-        return "Manager"
     if any(
         term in value
         for term in ("intern", "junior", "associate", "entry", "new grad")

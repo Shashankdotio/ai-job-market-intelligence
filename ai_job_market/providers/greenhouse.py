@@ -1,6 +1,7 @@
 """Greenhouse ATS provider implementation."""
 
 import logging
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -23,9 +24,13 @@ class GreenhouseProvider:
         self,
         session: requests.Session | None = None,
         timeout_seconds: float = 30.0,
+        max_retries: int = 2,
+        backoff_seconds: float = 0.5,
     ) -> None:
         self._session = session or requests.Session()
         self._timeout_seconds = timeout_seconds
+        self._max_retries = max_retries
+        self._backoff_seconds = backoff_seconds
 
     def scrape(
         self,
@@ -61,6 +66,7 @@ class GreenhouseProvider:
             ValueError,
             requests.RequestException,
         ) as error:
+            result.record_company_failure(company, str(error))
             result.failed_companies[company] = str(error)
             LOGGER.error(
                 "Unable to fetch Greenhouse company board",
@@ -82,8 +88,13 @@ class GreenhouseProvider:
             },
         )
 
+        company_jobs: list[JobPosting] = []
         for summary_job in jobs:
-            self._scrape_job(company, summary_job, collected_at, result)
+            posting = self._scrape_job(company, summary_job, collected_at, result)
+            if posting is not None:
+                company_jobs.append(posting)
+        result.record_company_jobs(company, company_jobs)
+        result.jobs.extend(company_jobs)
 
     def _scrape_job(
         self,
@@ -91,9 +102,10 @@ class GreenhouseProvider:
         summary_job: dict[str, Any],
         collected_at: str,
         result: ProviderRunResult,
-    ) -> None:
+    ) -> JobPosting | None:
         job_id = summary_job.get("id")
         if job_id is None:
+            result.record_company_detail_failure(company)
             result.detail_failure_count += 1
             LOGGER.warning(
                 "Skipped Greenhouse job without an identifier",
@@ -103,7 +115,7 @@ class GreenhouseProvider:
                     "company": company,
                 },
             )
-            return
+            return None
 
         try:
             detail = self._get_json(
@@ -122,6 +134,7 @@ class GreenhouseProvider:
             ValueError,
             requests.RequestException,
         ) as error:
+            result.record_company_detail_failure(company)
             result.detail_failure_count += 1
             LOGGER.warning(
                 "Unable to fetch or normalize Greenhouse job",
@@ -132,17 +145,31 @@ class GreenhouseProvider:
                     "job_id": job_id,
                 },
             )
-            return
+            return None
 
-        result.jobs.append(posting)
+        return posting
 
     def _get_json(self, url: str) -> dict[str, Any]:
-        response = self._session.get(url, timeout=self._timeout_seconds)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise ValueError("Expected a JSON object from Greenhouse")
-        return payload
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = self._session.get(url, timeout=self._timeout_seconds)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("Expected a JSON object from Greenhouse")
+                return payload
+            except requests.RequestException as error:
+                last_error = error
+                if attempt >= self._max_retries:
+                    raise
+                time.sleep(self._backoff_seconds * (2**attempt))
+            except ValueError:
+                raise
+
+        if last_error is not None:
+            raise last_error
+        raise ValueError(f"Unable to fetch Greenhouse payload for {url}")
 
     @staticmethod
     def _to_job_posting(
@@ -161,16 +188,28 @@ class GreenhouseProvider:
             for office in detail.get("offices", [])
             if isinstance(office, dict) and office.get("name")
         )
-        location = summary_job.get("location") or {}
+
+        location_value = summary_job.get("location") or {}
+        if isinstance(location_value, dict):
+            location_name = str(location_value.get("name") or "")
+        else:
+            location_name = str(location_value or "")
+
+        job_url = str(
+            summary_job.get("absolute_url")
+            or summary_job.get("url")
+            or detail.get("absolute_url")
+            or ""
+        )
 
         return JobPosting(
             provider=GreenhouseProvider.name,
             external_job_id=str(summary_job["id"]),
             company=company,
-            title=str(summary_job.get("title") or ""),
-            location=str(location.get("name") or ""),
+            title=str(summary_job.get("title") or detail.get("title") or ""),
+            location=location_name,
             updated_at=str(summary_job.get("updated_at") or ""),
-            job_url=str(summary_job.get("absolute_url") or ""),
+            job_url=job_url,
             department=departments,
             office=offices,
             description=clean_html(str(detail.get("content") or "")),

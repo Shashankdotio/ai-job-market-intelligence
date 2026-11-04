@@ -18,7 +18,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from ai_job_market.config import GREENHOUSE_COMPANIES
 from ai_job_market.logging import configure_logging
 from ai_job_market.pipeline.ingestion import run_ingestion
-from ai_job_market.providers.greenhouse import GreenhouseProvider, clean_html
+from ai_job_market.providers.greenhouse import GreenhouseProvider
+from ai_job_market.text import clean_html
 
 
 def fetch_jobs(company: str) -> list[dict[str, str]]:
