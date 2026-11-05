@@ -11,6 +11,7 @@ NAVIGATION = (
     "✦  Skills",
     "⌖  Locations",
     "≡  Roles",
+    "◔  Market Intelligence",
 )
 
 

@@ -66,6 +66,15 @@ GOLD_ROLE_SKILL_COUNTS_PATH: Final[Path] = GOLD_DATA_DIR / "role_skill_counts.cs
 GOLD_ROLE_SKILL_COOCCURRENCE_PATH: Final[Path] = (
     GOLD_DATA_DIR / "role_skill_cooccurrence.csv"
 )
+GOLD_MARKET_INTELLIGENCE_DAILY_PATH: Final[Path] = (
+    GOLD_DATA_DIR / "market_intelligence_daily.csv"
+)
+GOLD_MARKET_INTELLIGENCE_WEEKLY_PATH: Final[Path] = (
+    GOLD_DATA_DIR / "market_intelligence_weekly.csv"
+)
+GOLD_COMPANY_MOVEMENT_PATH: Final[Path] = GOLD_DATA_DIR / "company_movement.csv"
+GOLD_ROLE_HIRING_TRENDS_PATH: Final[Path] = GOLD_DATA_DIR / "role_hiring_trends.csv"
+GOLD_SKILL_MOMENTUM_PATH: Final[Path] = GOLD_DATA_DIR / "skill_momentum.csv"
 QUALITY_REPORT_PATH: Final[Path] = QUALITY_DATA_DIR / "latest_report.json"
 
 # Board tokens are provider configuration, not pipeline logic. A new provider

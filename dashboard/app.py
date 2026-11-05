@@ -15,7 +15,7 @@ from dashboard.components.filters import render_global_filters, render_navigatio
 from dashboard.components.layout import configure_page
 from dashboard.data import GOLD_DIRECTORY, load_dashboard_data
 from dashboard.data_repository import GoldDataUnavailableError
-from dashboard.pages import companies, locations, overview, roles, skills
+from dashboard.pages import companies, locations, market_intelligence, overview, roles, skills
 
 
 PAGES = {
@@ -24,6 +24,7 @@ PAGES = {
     "✦  Skills": skills.render,
     "⌖  Locations": locations.render,
     "≡  Roles": roles.render,
+    "◔  Market Intelligence": market_intelligence.render,
 }
 
 

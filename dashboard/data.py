@@ -7,16 +7,21 @@ import streamlit as st
 
 from ai_job_market.config import (
     GOLD_COMPANY_ACTIVITY_PATH,
+    GOLD_COMPANY_MOVEMENT_PATH,
     GOLD_HIRING_TRENDS_DAILY_PATH,
     GOLD_HIRING_TRENDS_WEEKLY_PATH,
     GOLD_JOB_CHANGES_PATH,
     GOLD_LIFECYCLE_SUMMARY_PATH,
+    GOLD_MARKET_INTELLIGENCE_DAILY_PATH,
+    GOLD_MARKET_INTELLIGENCE_WEEKLY_PATH,
+    GOLD_ROLE_HIRING_TRENDS_PATH,
     GOLD_ROLE_SKILL_COOCCURRENCE_PATH,
     GOLD_ROLE_SKILL_COUNTS_PATH,
     GOLD_ROLE_SKILL_SUMMARY_PATH,
     GOLD_SKILL_COOCCURRENCE_BY_COMPANY_PATH,
     GOLD_SKILL_COOCCURRENCE_PATH,
     GOLD_SKILL_DEMAND_TRENDS_PATH,
+    GOLD_SKILL_MOMENTUM_PATH,
 )
 from dashboard.data_repository import GoldData, load_gold_data
 
@@ -116,6 +121,61 @@ ROLE_SKILL_COLUMNS = {
     ],
 }
 
+MARKET_INTELLIGENCE_PATHS = {
+    "daily": GOLD_MARKET_INTELLIGENCE_DAILY_PATH,
+    "weekly": GOLD_MARKET_INTELLIGENCE_WEEKLY_PATH,
+    "company_movement": GOLD_COMPANY_MOVEMENT_PATH,
+    "role_hiring_trends": GOLD_ROLE_HIRING_TRENDS_PATH,
+    "skill_momentum": GOLD_SKILL_MOMENTUM_PATH,
+}
+
+MARKET_INTELLIGENCE_COLUMNS = {
+    "daily": [
+        "date",
+        "active_jobs",
+        "previous_period_active_jobs",
+        "delta_active_jobs",
+        "delta_pct",
+        "sample_size",
+    ],
+    "weekly": [
+        "week_start",
+        "active_jobs",
+        "previous_period_active_jobs",
+        "delta_active_jobs",
+        "delta_pct",
+        "sample_size",
+    ],
+    "company_movement": [
+        "company",
+        "current_active_jobs",
+        "previous_period_active_jobs",
+        "delta_active_jobs",
+        "delta_pct",
+        "status",
+        "sample_size",
+    ],
+    "role_hiring_trends": [
+        "date",
+        "role",
+        "role_count",
+        "previous_period_role_count",
+        "delta_count",
+        "delta_pct",
+        "sample_size",
+    ],
+    "skill_momentum": [
+        "skill",
+        "current_period_jobs",
+        "previous_period_jobs",
+        "delta_jobs",
+        "delta_pct",
+        "sample_size",
+        "coverage_pct",
+        "status",
+    ],
+}
+
 
 @st.cache_data(ttl=300, show_spinner="Loading market intelligence data...")
 def load_dashboard_data(gold_directory: str) -> GoldData:
@@ -182,6 +242,35 @@ def load_role_skill_data(gold_directory: str | Path | None = None) -> dict[str, 
         ("cooccurrence", base_directory / "role_skill_cooccurrence.csv"),
     ):
         columns = ROLE_SKILL_COLUMNS[name]
+        if not path.exists():
+            frames[name] = pd.DataFrame(columns=columns)
+            continue
+        try:
+            frame = pd.read_csv(path)
+        except pd.errors.EmptyDataError:
+            frame = pd.DataFrame(columns=columns)
+        if list(frame.columns) != columns:
+            missing = [column for column in columns if column not in frame.columns]
+            for column in missing:
+                frame[column] = pd.Series([None] * len(frame), index=frame.index)
+            frame = frame.reindex(columns=columns)
+        frames[name] = frame
+    return frames
+
+
+@st.cache_data(ttl=300, show_spinner="Loading market intelligence data...")
+def load_market_intelligence_data(gold_directory: str | Path | None = None) -> dict[str, pd.DataFrame]:
+    """Load Phase 5A market-intelligence Gold datasets and provide empty fallbacks."""
+    base_directory = Path(gold_directory) if gold_directory is not None else GOLD_DIRECTORY
+    frames: dict[str, pd.DataFrame] = {}
+    for name, path in (
+        ("daily", base_directory / "market_intelligence_daily.csv"),
+        ("weekly", base_directory / "market_intelligence_weekly.csv"),
+        ("company_movement", base_directory / "company_movement.csv"),
+        ("role_hiring_trends", base_directory / "role_hiring_trends.csv"),
+        ("skill_momentum", base_directory / "skill_momentum.csv"),
+    ):
+        columns = MARKET_INTELLIGENCE_COLUMNS[name]
         if not path.exists():
             frames[name] = pd.DataFrame(columns=columns)
             continue
