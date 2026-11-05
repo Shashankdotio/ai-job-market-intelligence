@@ -14,7 +14,7 @@ from dashboard.analytics import (
 from dashboard.components.charts import BRAND_BLUE, BRAND_TEAL, ranked_bar_chart
 from dashboard.components.layout import render_data_status, render_page_header
 from dashboard.components.tables import render_jobs_table
-from dashboard.data import load_historical_analytics_data, load_skill_cooccurrence_data
+from dashboard.data import load_historical_analytics_data, load_role_skill_data, load_skill_cooccurrence_data
 from dashboard.data_repository import GoldData
 
 
@@ -300,6 +300,70 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
             use_container_width=True,
             hide_index=True,
         )
+
+    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+    st.subheader("Role-based skill intelligence")
+    st.caption(
+        "Role summaries use deterministic title rules. Ambiguous job titles remain 'Other/Unclassified'; roles with too few postings are intentionally excluded from the detailed role view."
+    )
+    role_data = load_role_skill_data()
+    role_summary = role_data.get(
+        "summary",
+        pd.DataFrame(columns=["role", "posting_count", "usable_skill_postings", "skill_coverage_pct", "distinctive_skill_count", "top_skill", "top_skill_count"]),
+    )
+    role_counts = role_data.get(
+        "counts",
+        pd.DataFrame(columns=["role", "skill", "skill_count", "skill_pct_of_role", "overall_skill_pct", "relative_demand_pct", "is_distinctive"]),
+    )
+    role_pairs = role_data.get(
+        "cooccurrence",
+        pd.DataFrame(columns=["role", "skill_a", "skill_b", "pair_count", "skill_a_count", "skill_b_count", "pct_b_given_a", "pct_a_given_b", "jaccard_similarity"]),
+    )
+    if role_summary.empty and role_counts.empty and role_pairs.empty:
+        st.info("Role-based skill intelligence is unavailable because the role Gold outputs are absent or empty.")
+    else:
+        role_options = ["All roles"] + sorted(role_summary["role"].dropna().astype(str).unique().tolist()) if not role_summary.empty else ["All roles"]
+        selected_role = st.selectbox("Role focus", role_options, index=0)
+
+        if role_summary.empty:
+            st.info("No role summary is available for the current Gold snapshot.")
+        else:
+            summary_frame = role_summary.dropna(subset=["role"]).copy()
+            summary_frame["posting_count"] = pd.to_numeric(summary_frame["posting_count"], errors="coerce").fillna(0)
+            summary_frame = summary_frame.sort_values(["posting_count", "role"], ascending=[False, True], kind="mergesort")
+            role_metrics = st.columns(3)
+            role_metrics[0].metric("Roles with data", f"{int(summary_frame['posting_count'].gt(0).sum()):,}", help="Roles represented in the current Gold snapshot.")
+            role_metrics[1].metric("Top role", str(summary_frame.iloc[0]["role"]) if not summary_frame.empty else "n/a", help="Role with the highest number of postings.")
+            role_metrics[2].metric("Max postings", f"{int(summary_frame['posting_count'].max()):,}" if not summary_frame.empty else "0", help="Largest role-specific posting count in the current dataset.")
+            st.bar_chart(summary_frame.set_index("role")["posting_count"], use_container_width=True)
+
+        if selected_role != "All roles":
+            filtered_role_counts = role_counts.loc[role_counts["role"].astype(str).str.casefold().eq(str(selected_role).casefold())].copy() if not role_counts.empty else pd.DataFrame(columns=role_counts.columns)
+            filtered_role_pairs = role_pairs.loc[role_pairs["role"].astype(str).str.casefold().eq(str(selected_role).casefold())].copy() if not role_pairs.empty else pd.DataFrame(columns=role_pairs.columns)
+        else:
+            filtered_role_counts = role_counts.copy()
+            filtered_role_pairs = role_pairs.copy()
+
+        if filtered_role_counts.empty:
+            st.info(f"No skill demand data is available for {selected_role}.")
+        else:
+            st.subheader(f"Top skills for {selected_role}" if selected_role != "All roles" else "Top skills by role")
+            display_counts = filtered_role_counts.sort_values(["skill_count", "role", "skill"], ascending=[False, True, True], kind="mergesort").head(12)
+            st.dataframe(
+                display_counts[["role", "skill", "skill_count", "skill_pct_of_role", "relative_demand_pct"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        if filtered_role_pairs.empty:
+            st.info(f"No meaningful skill combinations are available for {selected_role} with the current role thresholds.")
+        else:
+            st.subheader(f"Skill combinations for {selected_role}" if selected_role != "All roles" else "Skill combinations by role")
+            st.dataframe(
+                filtered_role_pairs[["role", "skill_a", "skill_b", "pair_count", "pct_b_given_a", "pct_a_given_b", "jaccard_similarity"]].head(20),
+                use_container_width=True,
+                hide_index=True,
+            )
 
     st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
     st.subheader("Historical skill trends")

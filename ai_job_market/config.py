@@ -61,6 +61,11 @@ GOLD_SKILL_COOCCURRENCE_BY_COMPANY_PATH: Final[Path] = (
 GOLD_SKILL_COOCCURRENCE_BY_TITLE_PATH: Final[Path] = (
     GOLD_DATA_DIR / "skill_cooccurrence_by_title.csv"
 )
+GOLD_ROLE_SKILL_SUMMARY_PATH: Final[Path] = GOLD_DATA_DIR / "role_skill_summary.csv"
+GOLD_ROLE_SKILL_COUNTS_PATH: Final[Path] = GOLD_DATA_DIR / "role_skill_counts.csv"
+GOLD_ROLE_SKILL_COOCCURRENCE_PATH: Final[Path] = (
+    GOLD_DATA_DIR / "role_skill_cooccurrence.csv"
+)
 QUALITY_REPORT_PATH: Final[Path] = QUALITY_DATA_DIR / "latest_report.json"
 
 # Board tokens are provider configuration, not pipeline logic. A new provider

@@ -11,6 +11,9 @@ from ai_job_market.config import (
     GOLD_HIRING_TRENDS_WEEKLY_PATH,
     GOLD_JOB_CHANGES_PATH,
     GOLD_LIFECYCLE_SUMMARY_PATH,
+    GOLD_ROLE_SKILL_COOCCURRENCE_PATH,
+    GOLD_ROLE_SKILL_COUNTS_PATH,
+    GOLD_ROLE_SKILL_SUMMARY_PATH,
     GOLD_SKILL_COOCCURRENCE_BY_COMPANY_PATH,
     GOLD_SKILL_COOCCURRENCE_PATH,
     GOLD_SKILL_DEMAND_TRENDS_PATH,
@@ -75,6 +78,44 @@ SKILL_COOCCURRENCE_COLUMNS = {
     ],
 }
 
+ROLE_SKILL_DATA_PATHS = {
+    "summary": GOLD_ROLE_SKILL_SUMMARY_PATH,
+    "counts": GOLD_ROLE_SKILL_COUNTS_PATH,
+    "cooccurrence": GOLD_ROLE_SKILL_COOCCURRENCE_PATH,
+}
+
+ROLE_SKILL_COLUMNS = {
+    "summary": [
+        "role",
+        "posting_count",
+        "usable_skill_postings",
+        "skill_coverage_pct",
+        "distinctive_skill_count",
+        "top_skill",
+        "top_skill_count",
+    ],
+    "counts": [
+        "role",
+        "skill",
+        "skill_count",
+        "skill_pct_of_role",
+        "overall_skill_pct",
+        "relative_demand_pct",
+        "is_distinctive",
+    ],
+    "cooccurrence": [
+        "role",
+        "skill_a",
+        "skill_b",
+        "pair_count",
+        "skill_a_count",
+        "skill_b_count",
+        "pct_b_given_a",
+        "pct_a_given_b",
+        "jaccard_similarity",
+    ],
+}
+
 
 @st.cache_data(ttl=300, show_spinner="Loading market intelligence data...")
 def load_dashboard_data(gold_directory: str) -> GoldData:
@@ -114,6 +155,33 @@ def load_skill_cooccurrence_data(gold_directory: str | Path | None = None) -> di
         ("by_company", base_directory / "skill_cooccurrence_by_company.csv"),
     ):
         columns = SKILL_COOCCURRENCE_COLUMNS[name]
+        if not path.exists():
+            frames[name] = pd.DataFrame(columns=columns)
+            continue
+        try:
+            frame = pd.read_csv(path)
+        except pd.errors.EmptyDataError:
+            frame = pd.DataFrame(columns=columns)
+        if list(frame.columns) != columns:
+            missing = [column for column in columns if column not in frame.columns]
+            for column in missing:
+                frame[column] = pd.Series([None] * len(frame), index=frame.index)
+            frame = frame.reindex(columns=columns)
+        frames[name] = frame
+    return frames
+
+
+@st.cache_data(ttl=300, show_spinner="Loading role skill intelligence...")
+def load_role_skill_data(gold_directory: str | Path | None = None) -> dict[str, pd.DataFrame]:
+    """Load the Phase 4C role-based skill outputs with safe empty fallbacks."""
+    base_directory = Path(gold_directory) if gold_directory is not None else GOLD_DIRECTORY
+    frames: dict[str, pd.DataFrame] = {}
+    for name, path in (
+        ("summary", base_directory / "role_skill_summary.csv"),
+        ("counts", base_directory / "role_skill_counts.csv"),
+        ("cooccurrence", base_directory / "role_skill_cooccurrence.csv"),
+    ):
+        columns = ROLE_SKILL_COLUMNS[name]
         if not path.exists():
             frames[name] = pd.DataFrame(columns=columns)
             continue
