@@ -1,0 +1,15 @@
+{
+  "completed_at": "2026-11-05T21:58:27.638654+00:00",
+  "error_summary": {
+    "failed_companies": [],
+    "partial_companies": []
+  },
+  "provider": "fake",
+  "run_id": "run_2026-08-06T1200000000_e81362c1",
+  "started_at": "2026-08-06T12:00:00+00:00",
+  "status": "succeeded",
+  "total_companies_attempted": 1,
+  "total_companies_failed": 0,
+  "total_companies_succeeded": 1,
+  "total_jobs_observed": 1
+}

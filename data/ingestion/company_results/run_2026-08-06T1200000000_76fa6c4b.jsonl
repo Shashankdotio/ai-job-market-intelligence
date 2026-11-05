@@ -1,0 +1,1 @@
+{"attempted_at": "2026-08-06T12:00:00+00:00", "company_name": "example", "company_slug": "example", "completed_at": "2026-08-06T12:00:00+00:00", "error_code": null, "error_details": null, "is_complete_snapshot": true, "is_trustworthy": true, "jobs_fetched": 0, "provider": "fake", "run_id": "run_2026-08-06T1200000000_76fa6c4b", "status": "success"}
