@@ -264,7 +264,7 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
         )
 
     st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
-    st.subheader("Recently Updated Jobs")
+    st.subheader("Recently updated jobs")
     render_jobs_table(
         jobs.sort_values("updated_at", ascending=False),
         empty_message="No job postings match the active filters.",

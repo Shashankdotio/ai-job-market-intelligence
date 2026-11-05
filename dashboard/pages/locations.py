@@ -5,7 +5,11 @@ import streamlit as st
 
 from dashboard.analytics import count_by_column
 from dashboard.components.charts import BRAND_AMBER, donut_chart, ranked_bar_chart
-from dashboard.components.layout import render_data_status, render_page_header
+from dashboard.components.layout import (
+    format_timestamp,
+    render_data_status,
+    render_page_header,
+)
 from dashboard.components.tables import render_jobs_table
 from dashboard.data_repository import GoldData
 
@@ -91,7 +95,7 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
     )
     detail_columns[2].metric(
         "Latest update",
-        str(location_jobs["updated_at"].max())[:19] if not location_jobs.empty else "N/A",
+        format_timestamp(location_jobs["updated_at"].max()) if not location_jobs.empty else "N/A",
         help="Most recent update among jobs in this location",
     )
 
