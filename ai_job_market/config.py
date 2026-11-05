@@ -25,6 +25,20 @@ INGESTION_JOB_OBSERVATIONS_DIR: Final[Path] = (
     INGESTION_DATA_DIR / "job_observations"
 )
 INGESTION_JOB_EVENTS_DIR: Final[Path] = INGESTION_DATA_DIR / "job_events"
+INGESTION_JOB_LIFECYCLE_DIR: Final[Path] = INGESTION_DATA_DIR / "job_lifecycle"
+JOB_LIFECYCLE_STATE_PATH: Final[Path] = (
+    INGESTION_JOB_LIFECYCLE_DIR / "job_lifecycle_state.jsonl"
+)
+JOB_LIFECYCLE_EVENTS_PATH: Final[Path] = (
+    INGESTION_JOB_LIFECYCLE_DIR / "job_lifecycle_events.jsonl"
+)
+JOB_LIFECYCLE_PROCESSED_RESULTS_PATH: Final[Path] = (
+    INGESTION_JOB_LIFECYCLE_DIR / "processed_company_results.jsonl"
+)
+JOB_LIFECYCLE_COMPANY_CURSORS_PATH: Final[Path] = (
+    INGESTION_JOB_LIFECYCLE_DIR / "company_cursors.jsonl"
+)
+CLOSED_MISSING_RUNS_THRESHOLD: Final[int] = 2
 JOBS_MASTER_PATH: Final[Path] = RAW_DATA_DIR / "jobs_master.csv"
 SILVER_JOB_POSTINGS_PATH: Final[Path] = SILVER_DATA_DIR / "job_postings.csv"
 GOLD_COMPANY_COUNTS_PATH: Final[Path] = GOLD_DATA_DIR / "company_counts.csv"
@@ -64,6 +78,7 @@ def ensure_project_directories() -> None:
         INGESTION_COMPANY_RESULTS_DIR,
         INGESTION_JOB_OBSERVATIONS_DIR,
         INGESTION_JOB_EVENTS_DIR,
+        INGESTION_JOB_LIFECYCLE_DIR,
         OUTPUTS_DIR,
         CHARTS_DIR,
         REPORTS_DIR,

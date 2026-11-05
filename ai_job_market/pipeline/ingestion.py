@@ -13,6 +13,7 @@ from pathlib import Path
 from ai_job_market.config import (
     INGESTION_COMPANY_RESULTS_DIR,
     INGESTION_JOB_EVENTS_DIR,
+    INGESTION_JOB_LIFECYCLE_DIR,
     INGESTION_JOB_OBSERVATIONS_DIR,
     INGESTION_RUNS_DIR,
     JOBS_MASTER_PATH,
@@ -20,6 +21,7 @@ from ai_job_market.config import (
 )
 from ai_job_market.etl.io import append_jsonl_records, write_json_atomic, write_jsonl_atomic
 from ai_job_market.history import record_company_job_history
+from ai_job_market.lifecycle import process_company_lifecycle_result
 from ai_job_market.models import JOB_COLUMNS, JobPosting, ProviderRunResult
 from ai_job_market.providers.base import ATSProvider
 from ai_job_market.providers.registry import (
@@ -186,6 +188,14 @@ def run_ingestion(
                 jobs=result.get_company_jobs(company),
                 observations_dir=job_observations_dir or INGESTION_JOB_OBSERVATIONS_DIR,
                 events_dir=job_events_dir or INGESTION_JOB_EVENTS_DIR,
+            )
+            process_company_lifecycle_result(
+                company_result=company_result,
+                jobs=result.get_company_jobs(company),
+                state_path=INGESTION_JOB_LIFECYCLE_DIR / "job_lifecycle_state.jsonl",
+                events_path=INGESTION_JOB_LIFECYCLE_DIR / "job_lifecycle_events.jsonl",
+                processed_results_path=INGESTION_JOB_LIFECYCLE_DIR / "processed_company_results.jsonl",
+                company_cursor_path=INGESTION_JOB_LIFECYCLE_DIR / "company_cursors.jsonl",
             )
             _refresh_run_record_state()
 

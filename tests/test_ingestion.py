@@ -1229,5 +1229,583 @@ class IngestionPipelineTests(unittest.TestCase):
         self.assertEqual(len(second_events), 1)
 
 
+class LifecycleDetectionTests(unittest.TestCase):
+    def _make_job(self, *, company: str = "alpha", external_job_id: str = "job-1", updated_at: str = "2026-08-06T00:00:00Z") -> JobPosting:
+        return JobPosting(
+            provider="history",
+            external_job_id=external_job_id,
+            company=company,
+            title="Engineer",
+            location="Remote",
+            updated_at=updated_at,
+            job_url=f"https://jobs.example.test/{external_job_id}",
+            department="Engineering",
+            office="Remote",
+            description="Build things.",
+            collected_at=updated_at,
+        )
+
+    def _make_result(self, *, run_id: str, company_slug: str, attempted_at: str, is_complete_snapshot: bool = True, is_trustworthy: bool = True) -> dict[str, object]:
+        return {
+            "run_id": run_id,
+            "provider": "history",
+            "company_slug": company_slug,
+            "company_result_id": f"{run_id}:history:{company_slug}",
+            "is_complete_snapshot": is_complete_snapshot,
+            "is_trustworthy": is_trustworthy,
+            "attempted_at": attempted_at,
+            "completed_at": attempted_at,
+        }
+
+    def test_missing_jobs_mark_jobs_suspected_closed_then_closed(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+            company_result = self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z")
+            job = self._make_job()
+
+            first = process_company_lifecycle_result(
+                company_result=company_result,
+                jobs=[job],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+            second = process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+            third = process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-3", company_slug="alpha", attempted_at="2026-08-08T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(first, [])
+        self.assertEqual(second[0]["event_type"], "suspected_closed")
+        self.assertEqual(third[0]["event_type"], "closed")
+        self.assertEqual(state[0]["lifecycle_state"], "closed")
+        self.assertEqual([event["event_type"] for event in events], ["suspected_closed", "closed"])
+
+    def test_first_observation_creates_active_lifecycle_record(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(len(state), 1)
+        self.assertEqual(state[0]["lifecycle_state"], "active")
+        self.assertEqual(state[0]["missing_snapshot_count"], 0)
+
+    def test_reappearance_before_closure_returns_to_active_without_reopened_event(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-3", company_slug="alpha", attempted_at="2026-08-08T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "active")
+        self.assertEqual(state[0]["missing_snapshot_count"], 0)
+        self.assertNotIn("reopened", [event["event_type"] for event in events])
+
+    def test_reappearance_after_closure_returns_to_active_and_emits_reopened(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-3", company_slug="alpha", attempted_at="2026-08-08T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-4", company_slug="alpha", attempted_at="2026-08-09T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+                closed_missing_runs_threshold=2,
+            )
+
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "active")
+        self.assertIn("reopened", [event["event_type"] for event in events])
+
+    def test_failed_incomplete_or_untrustworthy_snapshots_do_not_increment_missing_counts(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            for payload in (
+                self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z", is_trustworthy=False),
+                self._make_result(run_id="run-3", company_slug="alpha", attempted_at="2026-08-08T00:00:00Z", is_complete_snapshot=False),
+                {**self._make_result(run_id="run-4", company_slug="alpha", attempted_at="2026-08-09T00:00:00Z"), "is_trustworthy": False},
+            ):
+                process_company_lifecycle_result(
+                    company_result=payload,
+                    jobs=[],
+                    state_path=state_path,
+                    events_path=events_path,
+                    processed_results_path=processed_path,
+                    company_cursor_path=cursor_path,
+                )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "active")
+        self.assertEqual(state[0]["missing_snapshot_count"], 0)
+
+    def test_valid_empty_complete_snapshot_increments_missing_counts(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "suspected_closed")
+        self.assertEqual(state[0]["missing_snapshot_count"], 1)
+
+    def test_same_external_job_id_across_companies_is_tracked_independently(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job(company="alpha", external_job_id="job-1")],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="beta", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[self._make_job(company="beta", external_job_id="job-1")],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(len(state), 2)
+        self.assertEqual({record["company_slug"] for record in state}, {"alpha", "beta"})
+
+    def test_duplicate_company_result_does_not_duplicate_transitions_or_increment_counts_twice(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+            result = self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z")
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            first = process_company_lifecycle_result(
+                company_result=result,
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            second = process_company_lifecycle_result(
+                company_result=result,
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(len(first), 1)
+        self.assertEqual(second, [])
+        self.assertEqual(state[0]["missing_snapshot_count"], 1)
+        self.assertEqual([event["event_type"] for event in events], ["suspected_closed"])
+
+    def test_out_of_order_company_results_are_handled_deterministically(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["missing_snapshot_count"], 1)
+        self.assertEqual([event["event_type"] for event in events], ["suspected_closed"])
+
+    def test_missing_lifecycle_state_file_is_initialized_safely(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "missing-state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "active")
+
+    def test_partial_ingestion_runs_do_not_close_jobs_from_failed_companies(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result={**self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"), "is_trustworthy": False},
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "active")
+        self.assertEqual(state[0]["missing_snapshot_count"], 0)
+
+    def test_lifecycle_timestamps_are_utc_aware_in_event_records(self) -> None:
+        from datetime import datetime, timezone
+
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z"),
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            event = json.loads(events_path.read_text(encoding="utf-8").splitlines()[0])
+            parsed = datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
+
+        self.assertEqual(parsed.tzinfo, timezone.utc)
+
+    def test_lifecycle_state_persists_across_separate_runs(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            for run_id, attempted_at in (
+                ("run-2", "2026-08-07T00:00:00Z"),
+                ("run-3", "2026-08-08T00:00:00Z"),
+                ("run-4", "2026-08-09T00:00:00Z"),
+            ):
+                process_company_lifecycle_result(
+                    company_result=self._make_result(run_id=run_id, company_slug="alpha", attempted_at=attempted_at),
+                    jobs=[],
+                    state_path=state_path,
+                    events_path=events_path,
+                    processed_results_path=processed_path,
+                    company_cursor_path=cursor_path,
+                    closed_missing_runs_threshold=3,
+                )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(len(state), 1)
+        self.assertEqual(state[0]["lifecycle_state"], "closed")
+        self.assertEqual(state[0]["missing_snapshot_count"], 3)
+
+    def test_custom_threshold_above_two_is_applied(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            for run_id, attempted_at in (
+                ("run-2", "2026-08-07T00:00:00Z"),
+                ("run-3", "2026-08-08T00:00:00Z"),
+                ("run-4", "2026-08-09T00:00:00Z"),
+            ):
+                process_company_lifecycle_result(
+                    company_result=self._make_result(run_id=run_id, company_slug="alpha", attempted_at=attempted_at),
+                    jobs=[],
+                    state_path=state_path,
+                    events_path=events_path,
+                    processed_results_path=processed_path,
+                    company_cursor_path=cursor_path,
+                    closed_missing_runs_threshold=3,
+                )
+            state = [json.loads(line) for line in state_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual(state[0]["lifecycle_state"], "closed")
+        self.assertEqual(state[0]["missing_snapshot_count"], 3)
+        self.assertEqual([event["event_type"] for event in events], ["suspected_closed", "closed"])
+
+    def test_repeated_processing_does_not_append_duplicate_lifecycle_events(self) -> None:
+        from ai_job_market.lifecycle import process_company_lifecycle_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_path = root / "state.jsonl"
+            events_path = root / "events.jsonl"
+            processed_path = root / "processed.jsonl"
+            cursor_path = root / "cursors.jsonl"
+            result = self._make_result(run_id="run-2", company_slug="alpha", attempted_at="2026-08-07T00:00:00Z")
+            process_company_lifecycle_result(
+                company_result=self._make_result(run_id="run-1", company_slug="alpha", attempted_at="2026-08-06T00:00:00Z"),
+                jobs=[self._make_job()],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=result,
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            process_company_lifecycle_result(
+                company_result=result,
+                jobs=[],
+                state_path=state_path,
+                events_path=events_path,
+                processed_results_path=processed_path,
+                company_cursor_path=cursor_path,
+            )
+            events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        self.assertEqual([event["event_type"] for event in events], ["suspected_closed"])
+
+
 if __name__ == "__main__":
     unittest.main()
