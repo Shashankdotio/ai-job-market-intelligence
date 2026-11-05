@@ -31,18 +31,32 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
     selected_company = st.selectbox("Company", companies)
     company_jobs = jobs.loc[jobs["company"] == selected_company].copy()
     company_skills = skill_frequency(company_jobs)
+
+    st.subheader(f"{selected_company}")
+    st.caption("Current filtered demand snapshot for the selected employer.")
     metrics = st.columns(4)
-    metrics[0].metric("Open jobs", f"{len(company_jobs):,}")
+    metrics[0].metric(
+        "Open jobs",
+        f"{len(company_jobs):,}",
+        help="Jobs currently matching the selected filters for this employer",
+    )
     metrics[1].metric(
         "Locations",
         f"{company_jobs['location'].replace('', pd.NA).dropna().nunique():,}",
+        help="Distinct locations across the filtered job set",
     )
-    metrics[2].metric("Skills requested", f"{len(company_skills):,}")
+    metrics[2].metric(
+        "Skills requested",
+        f"{len(company_skills):,}",
+        help="Distinct skills requested by the employer in the filtered view",
+    )
     metrics[3].metric(
         "Latest update",
         format_timestamp(company_jobs["updated_at"].max()),
+        help="Most recent job update in the selected company's filtered jobs",
     )
 
+    st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
     chart_column, arrangement_column = st.columns((1.6, 1))
     with chart_column:
         st.plotly_chart(
@@ -69,10 +83,28 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
             use_container_width=True,
         )
 
-    historical = load_historical_analytics_data().get("company_activity", pd.DataFrame(columns=["company", "new_jobs", "closed_jobs", "reopened_jobs", "current_active_jobs", "current_suspected_closed_jobs"]))
+    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
     st.subheader("Historical company activity")
+    st.caption("History is derived from lifecycle-aware Gold summaries; values are company-level totals, not live job counts.")
+    historical = load_historical_analytics_data().get(
+        "company_activity",
+        pd.DataFrame(
+            columns=[
+                "company",
+                "new_jobs",
+                "closed_jobs",
+                "reopened_jobs",
+                "current_active_jobs",
+                "current_suspected_closed_jobs",
+            ]
+        ),
+    )
+
     if historical.empty:
-        st.info("No historical company activity is available for the current gold snapshot.")
+        st.info(
+            "No historical company activity is available for the current gold snapshot. "
+            "This usually means the current dataset has not yet materialized lifecycle history."
+        )
     else:
         company_activity = historical.loc[historical["company"] == selected_company]
         if company_activity.empty:
@@ -80,16 +112,54 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
         else:
             summary = company_activity.iloc[0].to_dict()
             metric_columns = st.columns(4)
-            metric_columns[0].metric("New jobs", f"{int(summary.get('new_jobs', 0)):,}")
-            metric_columns[1].metric("Closed jobs", f"{int(summary.get('closed_jobs', 0)):,}")
-            metric_columns[2].metric("Reopened jobs", f"{int(summary.get('reopened_jobs', 0)):,}")
-            metric_columns[3].metric("Current active jobs", f"{int(summary.get('current_active_jobs', 0)):,}")
+            metric_columns[0].metric(
+                "New jobs",
+                f"{int(summary.get('new_jobs', 0)):,}",
+                help="Jobs newly discovered for this company in the historical snapshot",
+            )
+            metric_columns[1].metric(
+                "Closed jobs",
+                f"{int(summary.get('closed_jobs', 0)):,}",
+                help="Jobs closed at the company-level during historical evaluation",
+            )
+            metric_columns[2].metric(
+                "Reopened jobs",
+                f"{int(summary.get('reopened_jobs', 0)):,}",
+                help="Jobs that returned to active after a closure",
+            )
+            metric_columns[3].metric(
+                "Current active jobs",
+                f"{int(summary.get('current_active_jobs', 0)):,}",
+                help="Current active lifecycle count for this company",
+            )
 
-            activity_chart = go.Figure()
-            activity_chart.add_trace(go.Bar(x=["New jobs", "Closed jobs", "Reopened jobs", "Current active"], y=[int(summary.get("new_jobs", 0)), int(summary.get("closed_jobs", 0)), int(summary.get("reopened_jobs", 0)), int(summary.get("current_active_jobs", 0))], name=selected_company, marker_color=BRAND_VIOLET))
-            activity_chart.update_layout(title=f"History for {selected_company}", height=340, margin={"l": 8, "r": 8, "t": 44, "b": 8}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(activity_chart, use_container_width=True)
+            history_chart = go.Figure()
+            history_chart.add_trace(
+                go.Bar(
+                    x=["New jobs", "Closed jobs", "Reopened jobs", "Current active"],
+                    y=[
+                        int(summary.get("new_jobs", 0)),
+                        int(summary.get("closed_jobs", 0)),
+                        int(summary.get("reopened_jobs", 0)),
+                        int(summary.get("current_active_jobs", 0)),
+                    ],
+                    name=selected_company,
+                    marker_color=BRAND_VIOLET,
+                    hovertemplate="%{x}<br>Jobs: %{y}<extra></extra>",
+                )
+            )
+            history_chart.update_layout(
+                title=f"Historical activity for {selected_company}",
+                height=340,
+                margin={"l": 8, "r": 8, "t": 44, "b": 8},
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                xaxis={"title": "Metric"},
+                yaxis={"title": "Job count"},
+            )
+            st.plotly_chart(history_chart, use_container_width=True)
 
+    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
     st.subheader(f"Open Jobs · {selected_company}")
     render_jobs_table(
         company_jobs.sort_values("updated_at", ascending=False),
