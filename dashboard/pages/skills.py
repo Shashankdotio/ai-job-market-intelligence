@@ -1,6 +1,7 @@
 """Skills demand and employer comparison page."""
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.analytics import (
@@ -11,6 +12,7 @@ from dashboard.analytics import (
 from dashboard.components.charts import BRAND_BLUE, BRAND_TEAL, ranked_bar_chart
 from dashboard.components.layout import render_data_status, render_page_header
 from dashboard.components.tables import render_jobs_table
+from dashboard.data import load_historical_analytics_data
 from dashboard.data_repository import GoldData
 
 
@@ -81,3 +83,32 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
         selected_skill_jobs.sort_values("updated_at", ascending=False),
         empty_message="No matching jobs are available.",
     )
+
+    st.subheader("Historical skill demand")
+    historical_skill_data = load_historical_analytics_data().get(
+        "skill_demand_trends",
+        pd.DataFrame(columns=["date", "skill", "job_count"]),
+    )
+    if historical_skill_data.empty:
+        st.info(
+            "Historical skill demand is unavailable because the repository does not currently contain reliable historical skill observations."
+        )
+    else:
+        fig = go.Figure(
+            go.Bar(
+                x=historical_skill_data["skill"],
+                y=historical_skill_data["job_count"],
+                marker_color=BRAND_BLUE,
+                hovertemplate="%{x}<br>Jobs: %{y}<extra></extra>",
+            )
+        )
+        fig.update_layout(
+            title="Historical skill demand (when available)",
+            xaxis_title="Skill",
+            yaxis_title="Job count",
+            height=340,
+            margin={"l": 8, "r": 8, "t": 52, "b": 8},
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)

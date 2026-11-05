@@ -1,6 +1,7 @@
 """Company hiring drill-down page."""
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.analytics import count_by_column, skill_frequency
@@ -11,6 +12,7 @@ from dashboard.components.layout import (
     render_page_header,
 )
 from dashboard.components.tables import render_jobs_table
+from dashboard.data import load_historical_analytics_data
 from dashboard.data_repository import GoldData
 
 
@@ -66,6 +68,27 @@ def render(data: GoldData, jobs: pd.DataFrame) -> None:
             ),
             use_container_width=True,
         )
+
+    historical = load_historical_analytics_data().get("company_activity", pd.DataFrame(columns=["company", "new_jobs", "closed_jobs", "reopened_jobs", "current_active_jobs", "current_suspected_closed_jobs"]))
+    st.subheader("Historical company activity")
+    if historical.empty:
+        st.info("No historical company activity is available for the current gold snapshot.")
+    else:
+        company_activity = historical.loc[historical["company"] == selected_company]
+        if company_activity.empty:
+            st.info(f"No historical activity has been recorded for {selected_company}.")
+        else:
+            summary = company_activity.iloc[0].to_dict()
+            metric_columns = st.columns(4)
+            metric_columns[0].metric("New jobs", f"{int(summary.get('new_jobs', 0)):,}")
+            metric_columns[1].metric("Closed jobs", f"{int(summary.get('closed_jobs', 0)):,}")
+            metric_columns[2].metric("Reopened jobs", f"{int(summary.get('reopened_jobs', 0)):,}")
+            metric_columns[3].metric("Current active jobs", f"{int(summary.get('current_active_jobs', 0)):,}")
+
+            activity_chart = go.Figure()
+            activity_chart.add_trace(go.Bar(x=["New jobs", "Closed jobs", "Reopened jobs", "Current active"], y=[int(summary.get("new_jobs", 0)), int(summary.get("closed_jobs", 0)), int(summary.get("reopened_jobs", 0)), int(summary.get("current_active_jobs", 0))], name=selected_company, marker_color=BRAND_VIOLET))
+            activity_chart.update_layout(title=f"History for {selected_company}", height=340, margin={"l": 8, "r": 8, "t": 44, "b": 8}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(activity_chart, use_container_width=True)
 
     st.subheader(f"Open Jobs · {selected_company}")
     render_jobs_table(

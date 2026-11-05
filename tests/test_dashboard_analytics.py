@@ -13,6 +13,7 @@ from dashboard.analytics import (
     jobs_with_skill,
     skill_frequency,
 )
+from dashboard.data import HISTORICAL_COLUMNS, load_historical_analytics_data
 
 
 def _jobs() -> pd.DataFrame:
@@ -90,3 +91,31 @@ class DashboardAnalyticsTests(unittest.TestCase):
         self.assertEqual(classify_work_mode("Toronto, Canada"), "Onsite")
         self.assertEqual(classify_seniority("Director of Engineering"), "Director")
         self.assertEqual(classify_seniority("Data Science Intern"), "Entry")
+
+    def test_historical_analytics_data_has_expected_schema_and_empty_fallbacks(self) -> None:
+        historical = load_historical_analytics_data()
+
+        self.assertEqual(
+            list(historical["hiring_trends_daily"].columns),
+            HISTORICAL_COLUMNS["hiring_trends_daily"],
+        )
+        self.assertEqual(
+            list(historical["hiring_trends_weekly"].columns),
+            HISTORICAL_COLUMNS["hiring_trends_weekly"],
+        )
+        self.assertEqual(
+            list(historical["company_activity"].columns),
+            HISTORICAL_COLUMNS["company_activity"],
+        )
+        self.assertEqual(
+            list(historical["lifecycle_summary"].columns),
+            HISTORICAL_COLUMNS["lifecycle_summary"],
+        )
+        self.assertEqual(
+            list(historical["job_changes"].columns),
+            HISTORICAL_COLUMNS["job_changes"],
+        )
+        self.assertEqual(
+            list(historical["skill_demand_trends"].columns),
+            HISTORICAL_COLUMNS["skill_demand_trends"],
+        )
